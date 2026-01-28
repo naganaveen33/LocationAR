@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Location AR - POI Explorer</title>
+    <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+    <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar-nft.js"></script>
+    <style>
+      body {
+        margin: 0;
+        overflow: hidden;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      }
+      .hud {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        background: linear-gradient(180deg, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0) 100%);
+        padding: 20px;
+        z-index: 1000;
+      }
+      .hud-content {
+        max-width: 600px;
+        margin: 0 auto;
+      }
+      .location-info {
+        background: rgba(0, 0, 0, 0.7);
+        padding: 15px;
+        border-radius: 10px;
+        color: white;
+        font-size: 13px;
+        margin-bottom: 10px;
+      }
+      .poi-list {
+        background: rgba(0, 0, 0, 0.7);
+        padding: 15px;
+        border-radius: 10px;
+        color: white;
+        max-height: 200px;
+        overflow-y: auto;
+      }
+      .poi-item {
+        padding: 10px;
+        margin: 5px 0;
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 5px;
+        border-left: 3px solid #4CAF50;
+      }
+      .poi-name {
+        font-weight: bold;
+        margin-bottom: 5px;
+      }
+      .poi-distance {
+        font-size: 11px;
+        color: #4CAF50;
+      }
+      .compass {
+        position: fixed;
+        top: 50%;
+        right: 20px;
+        transform: translateY(-50%);
+        width: 80px;
+        height: 80px;
+        background: rgba(0, 0, 0, 0.8);
+        border-radius: 50%;
+        border: 3px solid #4CAF50;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-size: 24px;
+        z-index: 1000;
+      }
+      .controls-bottom {
+        position: fixed;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 1000;
+        display: flex;
+        gap: 10px;
+      }
+      .btn {
+        background: rgba(0, 0, 0, 0.8);
+        color: white;
+        border: 2px solid #4CAF50;
+        padding: 12px 20px;
+        border-radius: 25px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: bold;
+      }
+      .btn:active {
+        background: rgba(76, 175, 80, 0.5);
+      }
+      #loading {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.95);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        flex-direction: column;
+        color: white;
+        z-index: 9999;
+      }
+      #loading.hidden {
+        display: none;
+      }
+      .radar {
+        width: 60px;
+        height: 60px;
+        border: 3px solid #4CAF50;
+        border-radius: 50%;
+        position: relative;
+        animation: pulse 2s infinite;
+        margin-bottom: 20px;
+      }
+      .radar::before {
+        content: '';
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 30px;
+        height: 30px;
+        background: #4CAF50;
+        border-radius: 50%;
+      }
+      @keyframes pulse {
+        0%, 100% { transform: scale(1); opacity: 1; }
+        50% { transform: scale(1.2); opacity: 0.7; }
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Loading Screen -->
+    <div id="loading">
+      <div class="radar"></div>
+      <div style="font-size: 24px; margin-bottom: 10px;">🌍 Scanning Area</div>
+      <div style="font-size: 14px; opacity: 0.8;">Acquiring GPS signal...</div>
+    </div>
+
+    <!-- AR Scene -->
+    <a-scene
+      vr-mode-ui="enabled: false"
+      arjs="sourceType: webcam; videoTexture: true; debugUIEnabled: false;"
+      renderer="logarithmicDepthBuffer: true;"
+      embedded
+      id="scene">
+      
+      <a-camera gps-projected-camera rotation-reader look-controls-enabled="false"></a-camera>
+
+      <!-- POI Entities will be added dynamically -->
+    </a-scene>
+
+    <!-- HUD -->
+    <div class="hud">
+      <div class="hud-content">
+        <div class="location-info">
+          <div style="font-weight: bold; margin-bottom: 8px;">📍 Your Location</div>
+          <div id="user-coords" style="font-size: 12px; margin-bottom: 5px;">-</div>
+          <div style="font-size: 11px; opacity: 0.8;">
+            Accuracy: <span id="accuracy">-</span>m | 
+            Heading: <span id="heading">-</span>°
+          </div>
+        </div>
+        
+        <div class="poi-list" id="poi-list">
+          <div style="font-weight: bold; margin-bottom: 10px;">🎯 Nearby Points of Interest</div>
+          <div id="poi-items">Scanning for locations...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Compass -->
+    <div class="compass" id="compass">
+      <span id="compass-direction">N</span>
+    </div>
+
+    <!-- Controls -->
+    <div class="controls-bottom">
+      <button class="btn" onclick="refreshLocation()">🔄 Refresh</button>
+      <button class="btn" onclick="addCurrentLocation()">➕ Add POI</button>
+    </div>
+
+    <script>
+      // ===== CONFIGURATION =====
+      // Define your Points of Interest here
+      // Replace these with actual locations you want to mark
+      const pointsOfInterest = [
+        {
+          name: "Demo Point 1",
+          lat: 12.980597,  // actual latitude
+          lng: 77.596273, // actual longitude
+          color: "red",
+          scale: "5 5 5",
+          type: "box"
+        },
+        {
+          name: "Demo Point 2",
+          lat: 9.4985,
+          lng: 76.3390,
+          color: "blue",
+          scale: "4 4 4",
+          type: "sphere"
+        },
+        {
+          name: "Demo Point 3",
+          lat: 9.4978,
+          lng: 76.3385,
+          color: "green",
+          scale: "3 6 3",
+          type: "cylinder"
+        }
+      ];
+
+      // ===== STATE =====
+      let userPosition = { lat: null, lng: null, accuracy: null };
+      let heading = 0;
+      const scene = document.querySelector('a-scene');
+      const camera = document.querySelector('a-camera');
+
+      // ===== UTILITY FUNCTIONS =====
+      
+      // Calculate distance between two GPS coordinates (Haversine formula)
+      function calculateDistance(lat1, lon1, lat2, lon2) {
+        const R = 6371000; // Earth's radius in meters
+        const φ1 = lat1 * Math.PI / 180;
+        const φ2 = lat2 * Math.PI / 180;
+        const Δφ = (lat2 - lat1) * Math.PI / 180;
+        const Δλ = (lon2 - lon1) * Math.PI / 180;
+
+        const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+                  Math.cos(φ1) * Math.cos(φ2) *
+                  Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+        return R * c; // Distance in meters
+      }
+
+      // Format distance for display
+      function formatDistance(meters) {
+        if (meters < 1000) {
+          return `${Math.round(meters)}m`;
+        } else {
+          return `${(meters / 1000).toFixed(2)}km`;
+        }
+      }
+
+      // ===== AR OBJECT CREATION =====
+      
+      function createPOIEntity(poi, index) {
+        const entity = document.createElement('a-entity');
+        entity.setAttribute('id', `poi-${index}`);
+        entity.setAttribute('gps-projected-entity-place', `latitude: ${poi.lat}; longitude: ${poi.lng}`);
+
+        // Create shape based on type
+        const shape = document.createElement(`a-${poi.type}`);
+        shape.setAttribute('material', `color: ${poi.color}`);
+        shape.setAttribute('scale', poi.scale);
+        
+        // Add animation
+        shape.setAttribute('animation', 'property: rotation; to: 0 360 0; loop: true; dur: 8000; easing: linear');
+        
+        entity.appendChild(shape);
+
+        // Add text label above the shape
+        const label = document.createElement('a-text');
+        label.setAttribute('value', poi.name);
+        label.setAttribute('align', 'center');
+        label.setAttribute('color', '#FFF');
+        label.setAttribute('scale', '8 8 8');
+        label.setAttribute('position', '0 7 0');
+        label.setAttribute('look-at', '[camera]');
+        
+        entity.appendChild(label);
+
+        // Add distance label
+        const distanceLabel = document.createElement('a-text');
+        distanceLabel.setAttribute('id', `distance-${index}`);
+        distanceLabel.setAttribute('value', 'Calculating...');
+        distanceLabel.setAttribute('align', 'center');
+        distanceLabel.setAttribute('color', '#4CAF50');
+        distanceLabel.setAttribute('scale', '6 6 6');
+        distanceLabel.setAttribute('position', '0 5 0');
+        distanceLabel.setAttribute('look-at', '[camera]');
+        
+        entity.appendChild(distanceLabel);
+
+        scene.appendChild(entity);
+      }
+
+      // Create all POI entities
+      function createAllPOIs() {
+        pointsOfInterest.forEach((poi, index) => {
+          createPOIEntity(poi, index);
+        });
+      }
+
+      // ===== UPDATE FUNCTIONS =====
+      
+      function updateDistances() {
+        if (!userPosition.lat || !userPosition.lng) return;
+
+        pointsOfInterest.forEach((poi, index) => {
+          const distance = calculateDistance(
+            userPosition.lat, userPosition.lng,
+            poi.lat, poi.lng
+          );
+          
+          const distanceLabel = document.querySelector(`#distance-${index}`);
+          if (distanceLabel) {
+            distanceLabel.setAttribute('value', formatDistance(distance));
+          }
+        });
+      }
+
+      function updatePOIList() {
+        if (!userPosition.lat || !userPosition.lng) return;
+
+        const poiItems = document.getElementById('poi-items');
+        let html = '';
+
+        // Calculate distances and sort
+        const poisWithDistance = pointsOfInterest.map((poi, index) => {
+          const distance = calculateDistance(
+            userPosition.lat, userPosition.lng,
+            poi.lat, poi.lng
+          );
+          return { ...poi, distance, index };
+        }).sort((a, b) => a.distance - b.distance);
+
+        // Display sorted POIs
+        poisWithDistance.forEach(poi => {
+          html += `
+            <div class="poi-item">
+              <div class="poi-name">${poi.name}</div>
+              <div class="poi-distance">${formatDistance(poi.distance)} away</div>
+            </div>
+          `;
+        });
+
+        poiItems.innerHTML = html;
+      }
+
+      function updateCompass(alpha) {
+        heading = alpha;
+        const directions = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+        const index = Math.round(((alpha % 360) / 45)) % 8;
+        document.getElementById('compass-direction').textContent = directions[index];
+        document.getElementById('heading').textContent = Math.round(alpha);
+      }
+
+      // ===== GPS HANDLING =====
+      
+      function updateUserLocation(position) {
+        userPosition.lat = position.coords.latitude;
+        userPosition.lng = position.coords.longitude;
+        userPosition.accuracy = position.coords.accuracy;
+
+        // Update display
+        document.getElementById('user-coords').textContent = 
+          `${userPosition.lat.toFixed(6)}, ${userPosition.lng.toFixed(6)}`;
+        document.getElementById('accuracy').textContent = 
+          userPosition.accuracy.toFixed(1);
+
+        updateDistances();
+        updatePOIList();
+
+        console.log('Location updated:', userPosition);
+      }
+
+      function refreshLocation() {
+        navigator.geolocation.getCurrentPosition(
+          updateUserLocation,
+          (error) => {
+            console.error('GPS Error:', error);
+            alert('Unable to get location. Please check your settings.');
+          },
+          {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 0
+          }
+        );
+      }
+
+      // Add current location as POI (for testing)
+      function addCurrentLocation() {
+        if (!userPosition.lat || !userPosition.lng) {
+          alert('Location not available yet');
+          return;
+        }
+
+        const newPOI = {
+          name: `Custom POI ${pointsOfInterest.length + 1}`,
+          lat: userPosition.lat,
+          lng: userPosition.lng,
+          color: "yellow",
+          scale: "4 4 4",
+          type: "cone"
+        };
+
+        pointsOfInterest.push(newPOI);
+        createPOIEntity(newPOI, pointsOfInterest.length - 1);
+        updatePOIList();
+        
+        console.log('Added POI at current location:', newPOI);
+      }
+
+      // ===== INITIALIZATION =====
+      
+      window.addEventListener('load', () => {
+        // Hide loading screen
+        scene.addEventListener('loaded', () => {
+          setTimeout(() => {
+            document.getElementById('loading').classList.add('hidden');
+          }, 1500);
+        });
+
+        // Create POI entities
+        createAllPOIs();
+
+        // Start GPS tracking
+        if (navigator.geolocation) {
+          navigator.geolocation.watchPosition(
+            updateUserLocation,
+            (error) => console.error('Watch position error:', error),
+            {
+              enableHighAccuracy: true,
+              maximumAge: 0,
+              timeout: 27000
+            }
+          );
+        }
+
+        // Device orientation for compass
+        if (window.DeviceOrientationEvent) {
+          window.addEventListener('deviceorientation', (event) => {
+            if (event.alpha !== null) {
+              updateCompass(360 - event.alpha);
+            }
+          });
+        }
+
+        // Initial location fetch
+        refreshLocation();
+
+        // Update distances every 3 seconds
+        setInterval(updateDistances, 3000);
+      });
+
+      // Rotation reader component
+      AFRAME.registerComponent('rotation-reader', {
+        tick: function () {
+          // Can be used for debugging
+        }
+      });
+    </script>
+  </body>
+</html>
