@@ -3,97 +3,33 @@
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Advanced Location AR - POI Explorer</title>
+    <title>Location AR with GLB Models</title>
     <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
     <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar-nft.js"></script>
     <style>
       body {
         margin: 0;
         overflow: hidden;
-        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        font-family: Arial, sans-serif;
       }
-      .hud {
+      .info-panel {
         position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        background: linear-gradient(180deg, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0) 100%);
-        padding: 20px;
-        z-index: 1000;
-      }
-      .hud-content {
-        max-width: 600px;
-        margin: 0 auto;
-      }
-      .location-info {
-        background: rgba(0, 0, 0, 0.7);
+        top: 10px;
+        left: 10px;
+        background: rgba(0, 0, 0, 0.85);
+        color: white;
         padding: 15px;
         border-radius: 10px;
-        color: white;
+        z-index: 1000;
+        max-width: 320px;
         font-size: 13px;
-        margin-bottom: 10px;
       }
-      .poi-list {
-        background: rgba(0, 0, 0, 0.7);
-        padding: 15px;
-        border-radius: 10px;
-        color: white;
-        max-height: 200px;
-        overflow-y: auto;
-      }
-      .poi-item {
-        padding: 10px;
-        margin: 5px 0;
-        background: rgba(255, 255, 255, 0.1);
-        border-radius: 5px;
-        border-left: 3px solid #4CAF50;
-      }
-      .poi-name {
-        font-weight: bold;
-        margin-bottom: 5px;
-      }
-      .poi-distance {
+      .model-info {
+        margin-top: 10px;
+        padding-top: 10px;
+        border-top: 1px solid rgba(255,255,255,0.3);
         font-size: 11px;
-        color: #4CAF50;
-      }
-      .compass {
-        position: fixed;
-        top: 50%;
-        right: 20px;
-        transform: translateY(-50%);
-        width: 80px;
-        height: 80px;
-        background: rgba(0, 0, 0, 0.8);
-        border-radius: 50%;
-        border: 3px solid #4CAF50;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: white;
-        font-size: 24px;
-        z-index: 1000;
-      }
-      .controls-bottom {
-        position: fixed;
-        bottom: 20px;
-        left: 50%;
-        transform: translateX(-50%);
-        z-index: 1000;
-        display: flex;
-        gap: 10px;
-      }
-      .btn {
-        background: rgba(0, 0, 0, 0.8);
-        color: white;
-        border: 2px solid #4CAF50;
-        padding: 12px 20px;
-        border-radius: 25px;
-        cursor: pointer;
-        font-size: 14px;
-        font-weight: bold;
-      }
-      .btn:active {
-        background: rgba(76, 175, 80, 0.5);
+        opacity: 0.8;
       }
       #loading {
         position: fixed;
@@ -112,123 +48,376 @@
       #loading.hidden {
         display: none;
       }
-      .radar {
-        width: 60px;
-        height: 60px;
-        border: 3px solid #4CAF50;
+      .spinner {
+        border: 4px solid rgba(255, 255, 255, 0.3);
+        border-top: 4px solid #4CAF50;
         border-radius: 50%;
-        position: relative;
-        animation: pulse 2s infinite;
+        width: 50px;
+        height: 50px;
+        animation: spin 1s linear infinite;
         margin-bottom: 20px;
       }
-      .radar::before {
-        content: '';
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        width: 30px;
-        height: 30px;
-        background: #4CAF50;
-        border-radius: 50%;
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
       }
-      @keyframes pulse {
-        0%, 100% { transform: scale(1); opacity: 1; }
-        50% { transform: scale(1.2); opacity: 0.7; }
+      .controls {
+        position: fixed;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 1000;
+      }
+      .btn {
+        background: rgba(0, 0, 0, 0.8);
+        color: white;
+        border: 2px solid #4CAF50;
+        padding: 12px 24px;
+        border-radius: 25px;
+        font-size: 14px;
+        font-weight: bold;
+        cursor: pointer;
+      }
+      .status {
+        position: fixed;
+        bottom: 80px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(76, 175, 80, 0.9);
+        color: white;
+        padding: 10px 20px;
+        border-radius: 20px;
+        z-index: 1000;
+        display: none;
       }
     </style>
   </head>
   <body>
     <!-- Loading Screen -->
     <div id="loading">
-      <div class="radar"></div>
-      <div style="font-size: 24px; margin-bottom: 10px;">🌍 Scanning Area</div>
-      <div style="font-size: 14px; opacity: 0.8;">Acquiring GPS signal...</div>
+      <div class="spinner"></div>
+      <div style="font-size: 24px; margin-bottom: 10px;">🎯 Loading 3D Models</div>
+      <div style="font-size: 14px; opacity: 0.8;" id="loading-text">Initializing GPS...</div>
     </div>
 
     <!-- AR Scene -->
     <a-scene
       vr-mode-ui="enabled: false"
       arjs="sourceType: webcam; videoTexture: true; debugUIEnabled: false;"
-      renderer="logarithmicDepthBuffer: true;"
+      renderer="logarithmicDepthBuffer: true; colorManagement: true; sortObjects: true;"
       embedded
       id="scene">
       
+      <!-- Assets - Load your GLB models here -->
+      <a-assets>
+        <!-- Replace these with your actual GLB file paths -->
+        <a-asset-item id="model1" src="./models/lion.glb"></a-asset-item>
+        <a-asset-item id="model2" src="./models/building.glb"></a-asset-item>
+        <a-asset-item id="model3" src="./models/tree.glb"></a-asset-item>
+        
+        <!-- You can also load from URLs -->
+        <!-- <a-asset-item id="model4" src="https://example.com/model.glb"></a-asset-item> -->
+      </a-assets>
+      
       <a-camera gps-projected-camera rotation-reader look-controls-enabled="false"></a-camera>
 
-      <!-- POI Entities will be added dynamically -->
+      <!-- ========================================= -->
+      <!-- EXAMPLE 1: Basic GLB Model -->
+      <!-- ========================================= -->
+      <a-entity
+        gps-projected-entity-place="latitude: 9.4981; longitude: 76.3388;"
+        gltf-model="#model1"
+        scale="10 10 10"
+        rotation="0 0 0"
+        position="0 0 0">
+      </a-entity>
+
+      <!-- ========================================= -->
+      <!-- EXAMPLE 2: GLB Model with Animation -->
+      <!-- ========================================= -->
+      <a-entity
+        gps-projected-entity-place="latitude: 9.4985; longitude: 76.3390;"
+        gltf-model="#model2"
+        scale="15 15 15"
+        rotation="0 0 0"
+        animation="property: rotation; to: 0 360 0; loop: true; dur: 10000; easing: linear">
+      </a-entity>
+
+      <!-- ========================================= -->
+      <!-- EXAMPLE 3: GLB Model with Label -->
+      <!-- ========================================= -->
+      <a-entity gps-projected-entity-place="latitude: 9.4978; longitude: 76.3385;">
+        <!-- The 3D Model -->
+        <a-entity
+          gltf-model="#model3"
+          scale="8 8 8"
+          rotation="0 180 0"
+          position="0 0 0">
+        </a-entity>
+        
+        <!-- Label above the model -->
+        <a-text
+          value="Ancient Tree"
+          align="center"
+          color="#FFFFFF"
+          scale="10 10 10"
+          position="0 15 0"
+          look-at="[camera]">
+        </a-text>
+        
+        <!-- Distance label -->
+        <a-text
+          id="distance-label-1"
+          value="Calculating..."
+          align="center"
+          color="#4CAF50"
+          scale="8 8 8"
+          position="0 12 0"
+          look-at="[camera]">
+        </a-text>
+      </a-entity>
+
+      <!-- ========================================= -->
+      <!-- EXAMPLE 4: Multiple Models in One Location -->
+      <!-- ========================================= -->
+      <a-entity gps-projected-entity-place="latitude: 9.4983; longitude: 76.3387;">
+        <!-- Model 1 at center -->
+        <a-entity
+          gltf-model="#model1"
+          scale="5 5 5"
+          position="0 0 0">
+        </a-entity>
+        
+        <!-- Model 2 offset to the right -->
+        <a-entity
+          gltf-model="#model2"
+          scale="5 5 5"
+          position="10 0 0">
+        </a-entity>
+        
+        <!-- Model 3 offset to the left -->
+        <a-entity
+          gltf-model="#model3"
+          scale="5 5 5"
+          position="-10 0 0">
+        </a-entity>
+      </a-entity>
+
+      <!-- ========================================= -->
+      <!-- EXAMPLE 5: Interactive Clickable Model -->
+      <!-- ========================================= -->
+      <a-entity
+        gps-projected-entity-place="latitude: 9.4979; longitude: 76.3392;"
+        gltf-model="#model1"
+        scale="12 12 12"
+        class="clickable"
+        click-handler
+        animation__click="property: scale; to: 15 15 15; dur: 300; startEvents: click"
+        animation__clickend="property: scale; to: 12 12 12; dur: 300; startEvents: animationcomplete__click">
+      </a-entity>
+
+      <!-- ========================================= -->
+      <!-- EXAMPLE 6: Model with Lighting -->
+      <!-- ========================================= -->
+      <a-entity gps-projected-entity-place="latitude: 12.980597; longitude: 77.596222;">
+        <!-- Ambient light for the model -->
+        <a-light type="ambient" intensity="0.5"></a-light>
+        
+        <!-- Directional light -->
+        <a-light type="directional" intensity="0.8" position="1 1 1"></a-light>
+        
+        <!-- The model -->
+        <a-entity
+          gltf-model="#model2"
+          scale="10 10 10"
+          rotation="0 90 0">
+        </a-entity>
+      </a-entity>
+
+      <!-- ========================================= -->
+      <!-- EXAMPLE 7: Model from External URL -->
+      <!-- ========================================= -->
+      <!-- Note: Make sure the URL supports CORS -->
+      <a-entity
+        gps-projected-entity-place="latitude: 9.4982; longitude: 76.3386;"
+        gltf-model="url(https://cdn.glitch.com/324a5290-5aa7-4efc-92d6-ae0736433b12%2Fdragon.glb)"
+        scale="5 5 5"
+        rotation="0 0 0">
+      </a-entity>
+
     </a-scene>
 
-    <!-- HUD -->
-    <div class="hud">
-      <div class="hud-content">
-        <div class="location-info">
-          <div style="font-weight: bold; margin-bottom: 8px;">📍 Your Location</div>
-          <div id="user-coords" style="font-size: 12px; margin-bottom: 5px;">-</div>
-          <div style="font-size: 11px; opacity: 0.8;">
-            Accuracy: <span id="accuracy">-</span>m | 
-            Heading: <span id="heading">-</span>°
-          </div>
-        </div>
-        
-        <div class="poi-list" id="poi-list">
-          <div style="font-weight: bold; margin-bottom: 10px;">🎯 Nearby Points of Interest</div>
-          <div id="poi-items">Scanning for locations...</div>
-        </div>
+    <!-- Info Panel -->
+    <div class="info-panel">
+      <h3 style="margin: 0 0 10px 0;">🎯 Location AR - 3D Models</h3>
+      <div id="location-info">
+        <strong>Your Location:</strong><br>
+        <span id="user-coords" style="font-size: 11px;">Waiting for GPS...</span>
+      </div>
+      <div class="model-info">
+        <strong>Models Loaded:</strong><br>
+        • Model 1: <span id="model1-status">Loading...</span><br>
+        • Model 2: <span id="model2-status">Loading...</span><br>
+        • Model 3: <span id="model3-status">Loading...</span>
+      </div>
+      <div style="margin-top: 10px; font-size: 11px; opacity: 0.7;">
+        💡 Tip: Walk closer to see models appear
       </div>
     </div>
 
-    <!-- Compass -->
-    <div class="compass" id="compass">
-      <span id="compass-direction">N</span>
-    </div>
+    <!-- Status -->
+    <div class="status" id="status"></div>
 
     <!-- Controls -->
-    <div class="controls-bottom">
-      <button class="btn" onclick="refreshLocation()">🔄 Refresh</button>
-      <button class="btn" onclick="addCurrentLocation()">➕ Add POI</button>
+    <div class="controls">
+      <button class="btn" onclick="refreshLocation()">🔄 Refresh GPS</button>
     </div>
 
     <script>
       // ===== CONFIGURATION =====
-      // Define your Points of Interest here
-      // Replace these with actual locations you want to mark
-      const pointsOfInterest = [
-        {
-          name: "Demo Point 1",
-          lat: 12.980597,  // actual latitude
-          lng: 77.596273, // actual longitude
-          color: "red",
-          scale: "5 5 5",
-          type: "box"
-        },
-        {
-          name: "Demo Point 2",
-          lat: 9.4985,
-          lng: 76.3390,
-          color: "blue",
-          scale: "4 4 4",
-          type: "sphere"
-        },
-        {
-          name: "Demo Point 3",
-          lat: 9.4978,
-          lng: 76.3385,
-          color: "green",
-          scale: "3 6 3",
-          type: "cylinder"
-        }
-      ];
+      let userLat = null;
+      let userLng = null;
+      let modelsLoaded = 0;
+      const totalModels = 3;
 
-      // ===== STATE =====
-      let userPosition = { lat: null, lng: null, accuracy: null };
-      let heading = 0;
-      const scene = document.querySelector('a-scene');
-      const camera = document.querySelector('a-camera');
-
-      // ===== UTILITY FUNCTIONS =====
+      // ===== GPS FUNCTIONS =====
       
-      // Calculate distance between two GPS coordinates (Haversine formula)
+      function updateUserLocation(position) {
+        userLat = position.coords.latitude;
+        userLng = position.coords.longitude;
+        
+        document.getElementById('user-coords').innerHTML = 
+          `${userLat.toFixed(6)}, ${userLng.toFixed(6)}<br>` +
+          `Accuracy: ${position.coords.accuracy.toFixed(1)}m`;
+        
+        console.log('Location:', { userLat, userLng });
+      }
+
+      function refreshLocation() {
+        showStatus('Refreshing location...', 2000);
+        navigator.geolocation.getCurrentPosition(
+          updateUserLocation,
+          (error) => {
+            console.error('GPS Error:', error);
+            showStatus('GPS Error - Check permissions', 3000);
+          },
+          {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 0
+          }
+        );
+      }
+
+      function showStatus(message, duration = 2000) {
+        const status = document.getElementById('status');
+        status.textContent = message;
+        status.style.display = 'block';
+        setTimeout(() => {
+          status.style.display = 'none';
+        }, duration);
+      }
+
+      // ===== MODEL LOADING =====
+      
+      function trackModelLoading() {
+        const assets = document.querySelector('a-assets');
+        const models = assets.querySelectorAll('a-asset-item');
+        
+        models.forEach((model, index) => {
+          model.addEventListener('loaded', () => {
+            modelsLoaded++;
+            const statusId = `model${index + 1}-status`;
+            const statusEl = document.getElementById(statusId);
+            if (statusEl) {
+              statusEl.textContent = '✓ Ready';
+              statusEl.style.color = '#4CAF50';
+            }
+            
+            console.log(`Model ${index + 1} loaded`);
+            
+            // Update loading screen
+            document.getElementById('loading-text').textContent = 
+              `Loading models... ${modelsLoaded}/${totalModels}`;
+            
+            // Hide loading when all models are loaded
+            if (modelsLoaded === totalModels) {
+              setTimeout(() => {
+                document.getElementById('loading').classList.add('hidden');
+                showStatus('All models loaded! 🎉', 3000);
+              }, 500);
+            }
+          });
+          
+          model.addEventListener('error', (e) => {
+            console.error(`Model ${index + 1} failed to load:`, e);
+            const statusId = `model${index + 1}-status`;
+            const statusEl = document.getElementById(statusId);
+            if (statusEl) {
+              statusEl.textContent = '✗ Failed';
+              statusEl.style.color = '#f44336';
+            }
+          });
+        });
+      }
+
+      // ===== CLICK HANDLER =====
+      
+      AFRAME.registerComponent('click-handler', {
+        init: function() {
+          this.el.addEventListener('click', () => {
+            console.log('Model clicked!');
+            showStatus('Model clicked! 👆', 2000);
+            
+            // You can add any interaction here
+            // Example: Play animation, show info, change color, etc.
+          });
+        }
+      });
+
+      // ===== ROTATION READER =====
+      
+      AFRAME.registerComponent('rotation-reader', {
+        tick: function() {
+          // Can be used for debugging orientation
+        }
+      });
+
+      // ===== INITIALIZATION =====
+      
+      window.addEventListener('load', () => {
+        const scene = document.querySelector('a-scene');
+        
+        // Track model loading
+        trackModelLoading();
+        
+        // Scene loaded
+        scene.addEventListener('loaded', () => {
+          console.log('Scene loaded');
+        });
+        
+        // Start GPS tracking
+        if (navigator.geolocation) {
+          // Watch position continuously
+          navigator.geolocation.watchPosition(
+            updateUserLocation,
+            (error) => console.error('Watch position error:', error),
+            {
+              enableHighAccuracy: true,
+              maximumAge: 0,
+              timeout: 27000
+            }
+          );
+          
+          // Initial fetch
+          refreshLocation();
+        } else {
+          alert('Geolocation not supported by your browser');
+        }
+      });
+
+      // ===== HELPER: Calculate distance =====
+      
       function calculateDistance(lat1, lon1, lat2, lon2) {
         const R = 6371000; // Earth's radius in meters
         const φ1 = lat1 * Math.PI / 180;
@@ -241,227 +430,21 @@
                   Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
         const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 
-        return R * c; // Distance in meters
+        return R * c;
       }
 
-      // Format distance for display
-      function formatDistance(meters) {
-        if (meters < 1000) {
-          return `${Math.round(meters)}m`;
-        } else {
-          return `${(meters / 1000).toFixed(2)}km`;
-        }
-      }
-
-      // ===== AR OBJECT CREATION =====
+      // ===== UPDATE DISTANCES (Example) =====
       
-      function createPOIEntity(poi, index) {
-        const entity = document.createElement('a-entity');
-        entity.setAttribute('id', `poi-${index}`);
-        entity.setAttribute('gps-projected-entity-place', `latitude: ${poi.lat}; longitude: ${poi.lng}`);
-
-        // Create shape based on type
-        const shape = document.createElement(`a-${poi.type}`);
-        shape.setAttribute('material', `color: ${poi.color}`);
-        shape.setAttribute('scale', poi.scale);
-        
-        // Add animation
-        shape.setAttribute('animation', 'property: rotation; to: 0 360 0; loop: true; dur: 8000; easing: linear');
-        
-        entity.appendChild(shape);
-
-        // Add text label above the shape
-        const label = document.createElement('a-text');
-        label.setAttribute('value', poi.name);
-        label.setAttribute('align', 'center');
-        label.setAttribute('color', '#FFF');
-        label.setAttribute('scale', '8 8 8');
-        label.setAttribute('position', '0 7 0');
-        label.setAttribute('look-at', '[camera]');
-        
-        entity.appendChild(label);
-
-        // Add distance label
-        const distanceLabel = document.createElement('a-text');
-        distanceLabel.setAttribute('id', `distance-${index}`);
-        distanceLabel.setAttribute('value', 'Calculating...');
-        distanceLabel.setAttribute('align', 'center');
-        distanceLabel.setAttribute('color', '#4CAF50');
-        distanceLabel.setAttribute('scale', '6 6 6');
-        distanceLabel.setAttribute('position', '0 5 0');
-        distanceLabel.setAttribute('look-at', '[camera]');
-        
-        entity.appendChild(distanceLabel);
-
-        scene.appendChild(entity);
-      }
-
-      // Create all POI entities
-      function createAllPOIs() {
-        pointsOfInterest.forEach((poi, index) => {
-          createPOIEntity(poi, index);
-        });
-      }
-
-      // ===== UPDATE FUNCTIONS =====
-      
-      function updateDistances() {
-        if (!userPosition.lat || !userPosition.lng) return;
-
-        pointsOfInterest.forEach((poi, index) => {
-          const distance = calculateDistance(
-            userPosition.lat, userPosition.lng,
-            poi.lat, poi.lng
-          );
-          
-          const distanceLabel = document.querySelector(`#distance-${index}`);
-          if (distanceLabel) {
-            distanceLabel.setAttribute('value', formatDistance(distance));
+      setInterval(() => {
+        if (userLat && userLng) {
+          // Example: Update distance to model at 9.4978, 76.3385
+          const distance = calculateDistance(userLat, userLng, 9.4978, 76.3385);
+          const label = document.getElementById('distance-label-1');
+          if (label) {
+            label.setAttribute('value', `${distance.toFixed(0)}m away`);
           }
-        });
-      }
-
-      function updatePOIList() {
-        if (!userPosition.lat || !userPosition.lng) return;
-
-        const poiItems = document.getElementById('poi-items');
-        let html = '';
-
-        // Calculate distances and sort
-        const poisWithDistance = pointsOfInterest.map((poi, index) => {
-          const distance = calculateDistance(
-            userPosition.lat, userPosition.lng,
-            poi.lat, poi.lng
-          );
-          return { ...poi, distance, index };
-        }).sort((a, b) => a.distance - b.distance);
-
-        // Display sorted POIs
-        poisWithDistance.forEach(poi => {
-          html += `
-            <div class="poi-item">
-              <div class="poi-name">${poi.name}</div>
-              <div class="poi-distance">${formatDistance(poi.distance)} away</div>
-            </div>
-          `;
-        });
-
-        poiItems.innerHTML = html;
-      }
-
-      function updateCompass(alpha) {
-        heading = alpha;
-        const directions = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
-        const index = Math.round(((alpha % 360) / 45)) % 8;
-        document.getElementById('compass-direction').textContent = directions[index];
-        document.getElementById('heading').textContent = Math.round(alpha);
-      }
-
-      // ===== GPS HANDLING =====
-      
-      function updateUserLocation(position) {
-        userPosition.lat = position.coords.latitude;
-        userPosition.lng = position.coords.longitude;
-        userPosition.accuracy = position.coords.accuracy;
-
-        // Update display
-        document.getElementById('user-coords').textContent = 
-          `${userPosition.lat.toFixed(6)}, ${userPosition.lng.toFixed(6)}`;
-        document.getElementById('accuracy').textContent = 
-          userPosition.accuracy.toFixed(1);
-
-        updateDistances();
-        updatePOIList();
-
-        console.log('Location updated:', userPosition);
-      }
-
-      function refreshLocation() {
-        navigator.geolocation.getCurrentPosition(
-          updateUserLocation,
-          (error) => {
-            console.error('GPS Error:', error);
-            alert('Unable to get location. Please check your settings.');
-          },
-          {
-            enableHighAccuracy: true,
-            timeout: 10000,
-            maximumAge: 0
-          }
-        );
-      }
-
-      // Add current location as POI (for testing)
-      function addCurrentLocation() {
-        if (!userPosition.lat || !userPosition.lng) {
-          alert('Location not available yet');
-          return;
         }
-
-        const newPOI = {
-          name: `Custom POI ${pointsOfInterest.length + 1}`,
-          lat: userPosition.lat,
-          lng: userPosition.lng,
-          color: "yellow",
-          scale: "4 4 4",
-          type: "cone"
-        };
-
-        pointsOfInterest.push(newPOI);
-        createPOIEntity(newPOI, pointsOfInterest.length - 1);
-        updatePOIList();
-        
-        console.log('Added POI at current location:', newPOI);
-      }
-
-      // ===== INITIALIZATION =====
-      
-      window.addEventListener('load', () => {
-        // Hide loading screen
-        scene.addEventListener('loaded', () => {
-          setTimeout(() => {
-            document.getElementById('loading').classList.add('hidden');
-          }, 1500);
-        });
-
-        // Create POI entities
-        createAllPOIs();
-
-        // Start GPS tracking
-        if (navigator.geolocation) {
-          navigator.geolocation.watchPosition(
-            updateUserLocation,
-            (error) => console.error('Watch position error:', error),
-            {
-              enableHighAccuracy: true,
-              maximumAge: 0,
-              timeout: 27000
-            }
-          );
-        }
-
-        // Device orientation for compass
-        if (window.DeviceOrientationEvent) {
-          window.addEventListener('deviceorientation', (event) => {
-            if (event.alpha !== null) {
-              updateCompass(360 - event.alpha);
-            }
-          });
-        }
-
-        // Initial location fetch
-        refreshLocation();
-
-        // Update distances every 3 seconds
-        setInterval(updateDistances, 3000);
-      });
-
-      // Rotation reader component
-      AFRAME.registerComponent('rotation-reader', {
-        tick: function () {
-          // Can be used for debugging
-        }
-      });
+      }, 3000);
     </script>
   </body>
 </html>
